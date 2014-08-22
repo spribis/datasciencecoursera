@@ -1,7 +1,7 @@
-Code Book
-Getting and Cleaning Data - Course Project
-Steve Pribis
-22-Aug-2014
+# Code Book
+## Getting and Cleaning Data - Course Project
+## Steve Pribis
+## 22-Aug-2014
 
 For information on how the script works, consult the README.md file.
 
