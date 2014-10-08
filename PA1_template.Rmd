@@ -1,0 +1,93 @@
+---
+title: "Reproducible Research: personal activity monitoring device"
+author: "S. Pribis"
+date: "Tuesday, October 07, 2014"
+output: html_document
+---
+## Loading and preprocessing the data
+### Loading the data
+```{r load_data}
+fileURL <- "http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+download.file(fileURL, "repdata-data-activity.zip", mode = "wb")
+data <- read.csv(unz("repdata-data-activity.zip", "activity.csv"))
+```
+
+### Processing/transforming the data
+```{r process_data}
+library(reshape2)
+data_melt <- melt(data, id=c("date"), measure.vars="steps")
+data_sum <- dcast(data_melt, date ~ variable, sum)
+data_melt2 <- melt(data, id=c("interval"), measure.vars="steps")
+data_mean2 <- dcast(data_melt2, interval ~ variable, mean, na.rm=T)
+data_median2 <- dcast(data_melt2, interval ~ variable, median, na.rm=T)
+```
+
+## What is mean total number of steps taken per day?
+```{r total_steps_day}
+with(data_sum, hist(steps, main = "histogram of total steps per day"))
+options(scipen=999)
+day_mean <- with(data_sum, round(mean(steps, na.rm=T)))
+day_median <- with(data_sum, round(median(steps, na.rm=T)))
+```
+The mean and median steps per day are `r day_mean` and `r day_median`, respectively.
+
+## What is the average daily activity pattern?
+```{r daily_activity_pattern}
+with(data_mean2, plot(steps ~ interval, type="l", main = "average steps per interval by interval"))
+max_steps_interval <- data_mean2$interval[order(data_mean2$steps, decreasing = T)[1]]
+```
+The interval with the largest average steps per day across all days is `r max_steps_interval`.
+
+## Imputing missing values
+```{r NAs}
+missing_values <- sum(complete.cases(data)==F)
+```
+
+There are `r missing_values` rows with missing values in the dataset.  
+The `r NA` values will replaced by the median value for that interval across all days.
+
+```{r new_data}
+new_data <- data
+for(i in as.integer(row.names(data[(complete.cases(data)==F),]))) {
+        new_data[i, "steps"] <- merge(x=data[i,], y=data_median2, 
+                                      by="interval")[1,"steps.y"]
+}
+```
+
+```{r new_hist}
+new_data_melt <- melt(new_data, id=c("date"), measure.vars="steps")
+new_data_sum <- dcast(new_data_melt, date ~ variable, sum)
+with(new_data_sum, hist(steps, main = "histogram of total steps per day (imputed data)"))
+
+new_day_mean <- with(new_data_sum, round(mean(steps, na.rm=T)))
+new_day_median <- with(new_data_sum, round(median(steps, na.rm=T)))
+
+mean_diff <- day_mean - new_day_mean
+median_diff <- day_median - new_day_median
+
+perc_change_mean <- round(mean_diff*100/day_mean,1)
+perc_change_median <- round(median_diff*100/day_median,1)
+```
+
+After replacing the `r NA` values, the mean and median steps per day are `r new_day_mean` and `r new_day_median`, respectively.  
+  
+The histogram displays the impact of imputing missing data on the distribution of daily steps. All 8 days previously missing data now fall into the bin with the least number of steps. This greatly affects the mean number of steps, which decreased `r perc_change_mean`% or `r mean_diff` steps. The effect on the median was not as significant; it decreased `r perc_change_median`% or `r median_diff` steps.
+
+## Are there differences in activity patterns between weekdays and weekends?
+```{r weekends}
+data$Date <- as.Date(data$date,"%Y-%m-%d")
+
+for (i in 1:length(data$Date)) {
+        data$day[i] <- if(weekdays(data$Date[i])=="Sunday" | 
+                                  weekdays(data$Date[i])=="Saturday") {
+        "weekend"
+        } else {"weekday"}
+}
+
+w_data_melt2 <- melt(data, id=c("interval", "day"), measure.vars="steps")
+w_data_mean2 <- dcast(w_data_melt2, interval + day ~ variable, mean, na.rm=T)
+
+library(ggplot2)
+g <- ggplot(w_data_mean2, aes(interval, steps))
+g + geom_line() + facet_grid(day ~ .) + labs(title = "differences in activity patterns between weekdays and weekends")
+```
