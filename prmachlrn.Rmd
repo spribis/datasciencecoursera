@@ -79,7 +79,7 @@ The names of these variables actually makes sense - using the yaw, pitch, and ro
 
 Of course, it is possible to perform a correlation analysis on the 52 variables, or to call the "pairs" function, but this would be quite a large, unreadable plot. Instead, I plotted many of the variables against each other, using color to show the "classe" variable, and the results were quite intriguing, showing that each variable contributes some unique information or pattern. Here, for example, I plotted yaw, roll, and pitch for the forearm sensor against each other. I invite anyone to plot the others as well, using a similar format. 
 
-```{r, fig.width=5, fig.height=3}
+```{r, fig.width=10}
 plot1 <- qplot(roll_forearm, yaw_forearm, color = classe, data = sampletrain)
 plot2 <- qplot(pitch_forearm, yaw_forearm, color = classe, data = sampletrain)
 plot3 <- qplot(pitch_forearm, roll_forearm, color = classe, data = sampletrain)
