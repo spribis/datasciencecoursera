@@ -1,0 +1,134 @@
+---
+title: "Human Activity Recognition"
+author: "Using Machine Learning to Predict the Correctness of Weight Lifting Exercises"
+date: "Practical Machine Learning, JHU Data Science Specialization, Coursera"
+output: html_document
+---
+
+#Introduction
+The subject matter of this project is how correctly subjects are performing weight lifting exercises - specifically, weight lifting of a dumbbell. Sensors were placed on each of the subjects' belt, arm, forearm, and dumbbell. The sensors record measurements such as yaw, pitch, and roll, as well as 3-axis measurements for the gyroscope, accelerometer, and magnetometer. The subjects were asked to perform exercises in 5 distinct ways; one of the ways was the correct motion, while the other 4 were common mistakes made while weightlifting. The focus of this project is to predict which way the subjects performed the exercise based on the measurements from the sensors, using a specific set of data as the training set for the model and then applying it to a test set. More information and the original data can be found at <http://groupware.les.inf.puc-rio.br/har>.
+
+The resulting model developed was very successful, with a predicted accuracy of about 98% and able to predict the class of activity correctly in all 20 test cases.
+
+#Building a Model on the Data
+
+##Loading the data
+```{r, cache=T}
+trainURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(trainURL, "pml-training.csv", mode = "wb")
+download.file(testURL, "pml-testing.csv", mode = "wb")
+traindata <- read.csv("pml-training.csv")
+testdata <- read.csv("pml-testing.csv")
+str(traindata)
+str(testdata)
+```
+
+##Cleaning the data (part 1)
+
+This dataset has 160 variables - way too many to build a model on. Inspection of the test dataset reveals that several variables can be removed from the training set because the corresponding values to not exist in the test set. This reduces the training set to 60 variables, which helps, but is still not enough. At this point, I chose to split the training dataset.
+
+```{r}
+traindata <- traindata[,as.vector(apply(apply(sapply(testdata, as.numeric),2,is.na),2,sum))==0]
+```
+
+##Splitting the data
+
+To set up cross-validation, as well as a final validation set, I split the initial training set into a validation set (to be used after building the model) and 3 other training/"test" sets (for k-fold cross-validation). Before splitting the non-validation data into 3 folds, I performed the following data cleaning on that data.
+
+```{r}
+library(caret)
+set.seed(17)
+inTrain <- createDataPartition(y=traindata$classe, p=0.7, list=FALSE)
+sampletrain <- traindata[inTrain,]
+testtrain <- traindata[-inTrain,]
+folds <- createFolds(y=sampletrain$classe,k=3,
+                     list=TRUE,returnTrain=FALSE)
+sample1 <- sampletrain[-folds$Fold1,]
+sample2 <- sampletrain[-folds$Fold2,]
+sample3 <- sampletrain[-folds$Fold3,]
+cv1 <- sampletrain[folds$Fold1,]
+cv2 <- sampletrain[folds$Fold2,]
+cv3 <- sampletrain[folds$Fold3,]
+```
+
+##Cleaning the data (part 2)
+
+```{r}
+names(sampletrain)
+```
+
+The first remaining 7 variables are not related to the sensors like the following 52, so I chose to remove them. The 60th variable is "classe," which is what we are trying to predict. (In hindsight, I could have left in the user for this exercise, but chose to remove it in favor of extending the prediction capabilities to users whom the model was not trained on. Also, adding this variable to my final model did not improve the accuracy.)
+
+```{r}
+sampletrain_new <- sampletrain[,8:59]
+```
+
+##Building the model
+
+With the remaining 52 variables, I performed a near zero variance test to determine which ones could be removed. It turned out that none of them could, but I chose to build the model on the variables whose unique frequency was greater than 10. Having now narrowed down the predictive variables to 14, it was time to determine if these were the right ones. 
+
+```{r, cache=T}
+s <- apply(sampletrain, 2, as.numeric)
+s <- as.data.frame(s)
+nzv <- nearZeroVar(s, saveMetrics = TRUE)
+rownames(nzv[nzv$percentUnique > 10, ])
+```
+
+The names of these variables actually makes sense - using the yaw, pitch, and roll from each of the four body sensors (except for the roll from the belt) as well as the 3-axis magnet measurements from the forearm. This way, full body motion and all 3 rotational axis dimensions are utilized, with an added finesse including the additional forearm measurement. 
+
+Of course, it is possible to perform a correlation analysis on the 52 variables, or to call the "pairs" function, but this would be quite a large, unreadable plot. Instead, I plotted many of the variables against each other, using color to show the "classe" variable, and the results were quite intriguing, showing that each variable contributes some unique information or pattern. Here, for example, I plotted yaw, roll, and pitch for the forearm sensor against each other. I invite anyone to plot the others as well, using a similar format. 
+
+```{r, fig.width=5, fig.height=3}
+plot1 <- qplot(roll_forearm, yaw_forearm, color = classe, data = sampletrain)
+plot2 <- qplot(pitch_forearm, yaw_forearm, color = classe, data = sampletrain)
+plot3 <- qplot(pitch_forearm, roll_forearm, color = classe, data = sampletrain)
+library(gridExtra)
+grid.arrange(plot1, plot2, plot3, ncol=3, nrow=1)
+```
+
+Random forest was used because it tends to be one of the most accurate methods, and the interpretability is not as critical here because the individual measurements themselves are difficult to understand. The model was trained using each of the 3 folds, and the accuracy for each was measured against the respective cross-validation set and the training set.
+
+```{r, cache=T}
+library(randomForest)
+modFit1 <- train(classe ~ yaw_belt + pitch_belt +
+                        roll_arm + yaw_arm + pitch_arm +
+                        roll_dumbbell + yaw_dumbbell + pitch_dumbbell +
+                        roll_forearm + yaw_forearm + pitch_forearm +
+                        magnet_forearm_x + magnet_forearm_y + magnet_forearm_z,
+                method = "rf", data = sample1)
+confusionMatrix(sample1$classe,predict(modFit1,newdata=sample1))$overall[1]
+confusionMatrix(cv1$classe,predict(modFit1,newdata=cv1))$overall[1]
+
+modFit2 <- train(classe ~ yaw_belt + pitch_belt +
+                         roll_arm + yaw_arm + pitch_arm +
+                         roll_dumbbell + yaw_dumbbell + pitch_dumbbell +
+                         roll_forearm + yaw_forearm + pitch_forearm +
+                         magnet_forearm_x + magnet_forearm_y + magnet_forearm_z,
+                 method = "rf", data = sample2)
+confusionMatrix(sample2$classe,predict(modFit2,newdata=sample2))$overall[1]
+confusionMatrix(cv2$classe,predict(modFit2,newdata=cv2))$overall[1]
+
+modFit3 <- train(classe ~ yaw_belt + pitch_belt +
+                         roll_arm + yaw_arm + pitch_arm +
+                         roll_dumbbell + yaw_dumbbell + pitch_dumbbell +
+                         roll_forearm + yaw_forearm + pitch_forearm +
+                         magnet_forearm_x + magnet_forearm_y + magnet_forearm_z,
+                 method = "rf", data = sample3)
+confusionMatrix(sample3$classe,predict(modFit3,newdata=sample3))$overall[1]
+confusionMatrix(cv3$classe,predict(modFit3,newdata=cv3))$overall[1]
+```
+
+##Model selection and results
+
+```{r}
+mean(confusionMatrix(cv1$classe,predict(modFit1,newdata=cv1))$overall[1], 
+     confusionMatrix(cv2$classe,predict(modFit2,newdata=cv2))$overall[1],
+     confusionMatrix(cv3$classe,predict(modFit3,newdata=cv3))$overall[1])
+```
+
+All 3 models performed well, with the 2nd model slightly outperforming the other two, and an average accuracy of 98.1%. Interestingly enough, all 3 models resulted in an accuracy of 100% on their own training sets, which may be a result of overfitting. Still, applying the best model to the validation set results in an accuracy of 97.8%, which is similar to the average accuracy, so we expect the out-of-sample accuracy (one of measures of out-of-sample error) to be somewhere in this range (98%).
+
+```{r}
+confusionMatrix(testtrain$classe,predict(modFit2,newdata=testtrain))
+```
